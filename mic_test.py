@@ -9,7 +9,7 @@ with sr.Microphone() as source:
     try:
         audio = recognizer.listen(source)
         text = recognizer.recognize_google(audio)
-        print("You said" + text)
+        print("You said: " + text)
     except sr.UnknownValueError:
         print("Sorry, could not understand audio")
     except sr.RequestError as e:
