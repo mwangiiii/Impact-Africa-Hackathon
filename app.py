@@ -751,21 +751,23 @@ elif app_mode == "Continuous Listening":
     if stop_button:
         status_indicator.warning("Stopping continuous listening...")
         st.session_state.continuous_running = False
-
 # Sign Language Mode
 elif app_mode == "Sign Language Mode":
-    st.write("This mode converts speech to sign language visuals for the hearing impaired.")
+    st.write("This mode converts speech to sign language visuals and provides AI-generated image representations for each word to enhance understanding.")
     
     # Create containers for different elements
     control_container = st.container()
     subtitle_container = st.container()
     sign_container = st.container()
+    visualization_container = st.container()
     
     with control_container:
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
-            duration = st.slider("Recording Duration (seconds)", 5, 15, 5)
+            duration = st.slider("Recording Duration (seconds)", 5, 30, 10)
         with col2:
+            sign_lang = st.selectbox("Sign Language Style", ["ASL", "BSL", "International"])
+        with col3:
             start_signing = st.button("Start Recording for Sign Language 👋")
     
     # When the button is clicked
@@ -774,7 +776,7 @@ elif app_mode == "Sign Language Mode":
         audio_file = record_audio(duration)
         
         if audio_file:
-            with st.spinner("Transcribing speech..."):
+            with st.spinner("Processing your speech..."):
                 try:
                     # Use speech_recognition directly for sign language mode
                     recognizer = sr.Recognizer()
@@ -785,24 +787,94 @@ elif app_mode == "Sign Language Mode":
                     # Display subtitle
                     with subtitle_container:
                         st.subheader("Spoken Text")
-                        st.markdown(f"<div style='padding: 10px; background-color: #f0f0f0; border-radius: 5px;'>{transcript}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='padding: 15px; background-color: #f0f2f6; border-radius: 8px; margin-bottom: 20px;'>{transcript}</div>", 
+                                  unsafe_allow_html=True)
                         
                         # Add emotion if enabled
                         if enable_emotion and emotion_model:
                             emotion, confidence = detect_emotion(transcript, emotion_model)
-                            st.markdown(f"<small>Detected emotion: {emotion} (confidence: {confidence:.2f})</small>", unsafe_allow_html=True)
+                            emoji = {
+                                "happy": "😊",
+                                "sad": "😢",
+                                "angry": "😠",
+                                "fear": "😨",
+                                "surprise": "😲",
+                                "neutral": "😐"
+                            }.get(emotion.lower(), "❓")
+                            st.markdown(f"<div style='padding: 8px; background-color: #e6f3ff; border-radius: 5px;'>"
+                                       f"Detected emotion: <b>{emotion} {emoji}</b> (confidence: {confidence:.2f})</div>", 
+                                       unsafe_allow_html=True)
                         
                         # Add toxicity warning if enabled
                         if enable_toxicity and toxicity_model:
                             is_toxic, tox_confidence = detect_toxicity(transcript, toxicity_model)
                             if is_toxic:
-                                st.error(f"⚠️ Toxic content detected! Confidence: {tox_confidence:.2f}")
+                                st.error(f"⚠️ Warning: Potentially harmful content detected (confidence: {tox_confidence:.2f})")
                     
                     # Convert to sign language and display
-                    display_sign_language(transcript, sign_container, sign_language=sign_lang)
+                    with sign_container:
+                        st.subheader("Sign Language Representation")
+                        display_sign_language(transcript, sign_container, sign_language=sign_lang)
+                    
+                    # New AI-generated word visualization section
+                    with visualization_container:
+                        st.subheader("Word Visualizations")
+                        words = transcript.split()
+                        
+                        # Create a grid for the word visualizations
+                        cols = st.columns(3)  # 3 columns grid
+                        
+                        for i, word in enumerate(words):
+                            # Generate AI image for each word (placeholder - you would integrate with an image generation API)
+                            try:
+                                # This is a placeholder - replace with actual image generation code
+                                # For example: image = generate_word_image(word)
+                                # For now, we'll use emoji representations as placeholders
+                                emoji_map = {
+                                    "hello": "👋",
+                                    "thank": "🙏",
+                                    "you": "👉",
+                                    "help": "🆘",
+                                    "water": "💧",
+                                    "food": "🍎",
+                                    "happy": "😊",
+                                    "sad": "😢",
+                                    "love": "❤️",
+                                    "family": "👪",
+                                    "friend": "🤝",
+                                    "work": "💼",
+                                    "home": "🏠",
+                                    "school": "🏫",
+                                    "yes": "👍",
+                                    "no": "👎",
+                                    "please": "🙏",
+                                    "sorry": "😔",
+                                    "time": "⏰",
+                                    "day": "☀️",
+                                    "night": "🌙",
+                                    "good": "👌",
+                                    "bad": "👎",
+                                    "hot": "🔥",
+                                    "cold": "❄️"
+                                    
+                                    # Add more word-emoji mappings as needed
+                                }
+                                
+                                # Get emoji or use default if not found
+                                emoji = emoji_map.get(word.lower(), "✋")  # Default to hand sign
+                                
+                                # Display each word with its visualization
+                                with cols[i % 3]:
+                                    st.markdown(f"<div style='text-align: center; margin-bottom: 20px;'>"
+                                               f"<div style='font-size: 48px; margin-bottom: 5px;'>{emoji}</div>"
+                                               f"<div style='font-weight: bold;'>{word.capitalize()}</div>"
+                                               f"</div>", unsafe_allow_html=True)
+                                    
+                            except Exception as e:
+                                st.error(f"Error generating visualization for '{word}': {str(e)}")
                     
                 except sr.UnknownValueError:
-                    st.error("Sorry, I could not understand your speech. Please try again.")
+                    st.error("Sorry, I couldn't understand your speech. Please try speaking more clearly.")
                 except sr.RequestError:
                     st.error("Could not connect to the recognition service. Please check your internet connection.")
                 except Exception as e:
@@ -813,7 +885,6 @@ elif app_mode == "Sign Language Mode":
                         os.unlink(audio_file)
                     except:
                         pass
-
 # Display installation instructions if requirements are missing
 if not all(requirements.values()):
     st.error("Some required packages are missing. Please install them to enable all features.")

@@ -34,6 +34,132 @@ def load_language_id_model():
         st.warning(f"Could not load advanced language detection model: {str(e)}")
         return None
 
+# Add missing sentiment analysis and emotion detection models
+@st.cache_resource
+def load_sentiment_model():
+    """
+    Load and cache the sentiment analysis model.
+    
+    Returns:
+        The loaded sentiment analysis model or None if loading fails
+    """
+    if not transformers_available:
+        return None
+        
+    try:
+        return pipeline("sentiment-analysis")
+    except Exception as e:
+        st.warning(f"Could not load sentiment analysis model: {str(e)}")
+        return None
+
+@st.cache_resource
+def load_emotion_model():
+    """
+    Load and cache the emotion detection model.
+    
+    Returns:
+        The loaded emotion detection model or None if loading fails
+    """
+    if not transformers_available:
+        return None
+        
+    try:
+        return pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
+    except Exception as e:
+        st.warning(f"Could not load emotion detection model: {str(e)}")
+        return None
+
+def analyze_sentiment(text, sentiment_model=None):
+    """
+    Analyze sentiment of given text.
+    
+    Args:
+        text (str): Text to analyze
+        sentiment_model: Pre-loaded sentiment analysis model (optional)
+        
+    Returns:
+        tuple: (sentiment_label, confidence_score)
+    """
+    if not text or len(text.strip()) == 0:
+        return 'neutral', 0.5
+    
+    if not transformers_available:
+        # Very basic sentiment analysis based on keywords
+        text = text.lower()
+        positive_words = ['good', 'great', 'excellent', 'happy', 'love', 'like', 'wonderful', 'amazing']
+        negative_words = ['bad', 'terrible', 'awful', 'sad', 'hate', 'dislike', 'poor', 'horrible']
+        
+        positive_count = sum(1 for word in positive_words if word in text)
+        negative_count = sum(1 for word in negative_words if word in text)
+        
+        if positive_count > negative_count:
+            return 'positive', 0.5 + (0.1 * min(positive_count, 5))
+        elif negative_count > positive_count:
+            return 'negative', 0.5 + (0.1 * min(negative_count, 5))
+        else:
+            return 'neutral', 0.5
+    
+    if sentiment_model is None:
+        sentiment_model = load_sentiment_model()
+        if sentiment_model is None:
+            return 'neutral', 0.5
+    
+    try:
+        result = sentiment_model(text)
+        return result[0]['label'].lower(), result[0]['score']
+    except Exception as e:
+        st.error(f"Sentiment analysis error: {str(e)}")
+        return 'neutral', 0.5
+
+def detect_emotion(text, emotion_model=None):
+    """
+    Detect emotion in given text.
+    
+    Args:
+        text (str): Text to analyze
+        emotion_model: Pre-loaded emotion detection model (optional)
+        
+    Returns:
+        tuple: (emotion_label, confidence_score)
+    """
+    if not text or len(text.strip()) == 0:
+        return 'neutral', 0.5
+    
+    if not transformers_available:
+        # Very basic emotion detection based on keywords
+        text = text.lower()
+        emotions = {
+            'joy': ['happy', 'joy', 'delighted', 'pleased', 'excited'],
+            'sadness': ['sad', 'unhappy', 'depressed', 'miserable', 'gloomy'],
+            'anger': ['angry', 'furious', 'enraged', 'mad', 'frustrated'],
+            'fear': ['afraid', 'scared', 'terrified', 'worried', 'anxious'],
+            'surprise': ['surprised', 'amazed', 'astonished', 'shocked', 'stunned']
+        }
+        
+        best_emotion = 'neutral'
+        best_score = 0
+        
+        for emotion, keywords in emotions.items():
+            count = sum(1 for word in keywords if word in text)
+            score = 0.5 + (0.1 * min(count, 5))
+            if count > 0 and score > best_score:
+                best_emotion = emotion
+                best_score = score
+                
+        return best_emotion, best_score
+    
+    if emotion_model is None:
+        emotion_model = load_emotion_model()
+        if emotion_model is None:
+            return 'neutral', 0.5
+    
+    try:
+        result = emotion_model(text)
+        return result[0]['label'].lower(), result[0]['score']
+    except Exception as e:
+        st.error(f"Emotion detection error: {str(e)}")
+        return 'neutral', 0.5
+
 def identify_language(text, language_identifier=None):
     """
     Identify the language of the given text.
@@ -308,10 +434,15 @@ def get_language_emoji(lang_code):
     }
     return emoji_map.get(lang_code, '🌐')  # Globe emoji as fallback
 
-# Load language identifier model at module initialization
+# Load models at module initialization
 language_identifier = None
+sentiment_model = None
+emotion_model = None
+
 if transformers_available:
     language_identifier = load_language_id_model()
+    sentiment_model = load_sentiment_model()
+    emotion_model = load_emotion_model()
 
 def process_multilingual_text(text, analyze_sentiment=False, detect_emotions=False):
     """
@@ -325,15 +456,8 @@ def process_multilingual_text(text, analyze_sentiment=False, detect_emotions=Fal
     Returns:
         list: List of dictionaries with language info and analysis for each segment
     """
-    from nlp import analyze_sentiment, detect_emotion, load_emotion_model
-    
     segments = segment_by_language(text, language_identifier)
     result = []
-    
-    # Load emotion model if needed
-    emotion_model = None
-    if detect_emotions and transformers_available:
-        emotion_model = load_emotion_model()
     
     for lang_code, confidence, segment in segments:
         segment_info = {
@@ -348,14 +472,14 @@ def process_multilingual_text(text, analyze_sentiment=False, detect_emotions=Fal
         
         # Add sentiment analysis if requested
         if analyze_sentiment:
-            sentiment_label, sentiment_score = analyze_sentiment(segment)
+            sentiment_label, sentiment_score = analyze_sentiment(segment, sentiment_model)
             segment_info['sentiment'] = {
                 'label': sentiment_label,
                 'score': round(sentiment_score, 2)
             }
         
         # Add emotion detection if requested
-        if detect_emotions and emotion_model:
+        if detect_emotions:
             emotion_label, emotion_score = detect_emotion(segment, emotion_model)
             segment_info['emotion'] = {
                 'label': emotion_label,
